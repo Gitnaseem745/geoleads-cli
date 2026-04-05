@@ -2,13 +2,18 @@
   "name": "geoleads",
   "version": "1.0.0",
   "description": "CLI tool for extracting business leads from Google Maps",
-  "main": "scraper.js",
+  "main": "dist/index.js",
   "bin": {
-    "geoleads": "./scraper.js"
+    "geoleads": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "start": "node scraper.js",
-    "scrape": "node scraper.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "scraper",
@@ -16,7 +21,8 @@
     "lead-generation",
     "excel",
     "cli",
-    "geoleads"
+    "geoleads",
+    "typescript"
   ],
   "author": "Naseem Ansari (Gitnaseem745)",
   "license": "MIT",
@@ -28,6 +34,9 @@
     "url": "https://github.com/Gitnaseem745/geoleads-cli/issues"
   },
   "homepage": "https://github.com/Gitnaseem745/geoleads-cli#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "chalk": "^4.1.2",
     "cheerio": "^1.0.0",
@@ -37,5 +46,10 @@
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "@types/yargs": "^17.0.33"
   }
 }

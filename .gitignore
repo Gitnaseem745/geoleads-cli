@@ -1,6 +1,9 @@
 # Node.js dependencies
 node_modules/
 
+# TypeScript compiled output
+dist/
+
 # Excel Outputs
 *.xlsx
 *.csv
@@ -8,10 +11,8 @@ node_modules/
 # Text configs / inputs
 *.txt
 
-# Ignore all markdown files
+# Ignore all markdown files except README
 *.md
-
-# Except allow README.md
 !README.md
 
 # OS generated files
@@ -24,3 +25,6 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Ignore all examples
+examples/

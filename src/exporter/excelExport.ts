@@ -3,12 +3,13 @@
  * Supports single-sheet (default) and multi-sheet (batch/city mode) exports.
  */
 
-const ExcelJS = require('exceljs');
-const path = require('path');
-const logger = require('../utils/logger');
+import ExcelJS from 'exceljs';
+import path from 'path';
+import logger from '../utils/logger';
+import type { Business } from '../types';
 
-// Consistent column definition
-const COLUMNS = [
+/** Consistent column definition */
+const COLUMNS: Partial<ExcelJS.Column>[] = [
   { header: 'Name', key: 'name', width: 35 },
   { header: 'Website', key: 'website', width: 45 },
   { header: 'Phone', key: 'phone', width: 22 },
@@ -16,15 +17,13 @@ const COLUMNS = [
   { header: 'Address', key: 'address', width: 50 },
 ];
 
-// Color palette for alternating tab colors in batch mode
-const TAB_COLORS = ['4472C4', '548235', 'BF8F00', 'C00000', '7030A0', '00B0F0'];
+/** Color palette for alternating tab colors in batch mode */
+const TAB_COLORS: string[] = ['4472C4', '548235', 'BF8F00', 'C00000', '7030A0', '00B0F0'];
 
 /**
  * Style a worksheet with headers, rows, borders, and frozen header.
- * @param {ExcelJS.Worksheet} worksheet
- * @param {Object[]} data - Array of business objects
  */
-function populateWorksheet(worksheet, data) {
+function populateWorksheet(worksheet: ExcelJS.Worksheet, data: Business[]): void {
   // Define columns
   worksheet.columns = COLUMNS.map((c) => ({ ...c }));
 
@@ -40,7 +39,7 @@ function populateWorksheet(worksheet, data) {
   headerRow.height = 28;
 
   // Add data rows
-  data.forEach((item, index) => {
+  data.forEach((item: Business, index: number) => {
     const row = worksheet.addRow({
       name: item.name || 'N/A',
       website: item.website || '',
@@ -64,14 +63,14 @@ function populateWorksheet(worksheet, data) {
     // Clickable website hyperlink
     if (item.website) {
       const websiteCell = row.getCell('website');
-      websiteCell.value = { text: item.website, hyperlink: item.website };
+      websiteCell.value = { text: item.website, hyperlink: item.website } as ExcelJS.CellHyperlinkValue;
       websiteCell.font = { color: { argb: '0563C1' }, underline: true };
     }
 
     // Clickable email hyperlink
     if (item.email) {
       const emailCell = row.getCell('email');
-      emailCell.value = { text: item.email, hyperlink: `mailto:${item.email}` };
+      emailCell.value = { text: item.email, hyperlink: `mailto:${item.email}` } as ExcelJS.CellHyperlinkValue;
       emailCell.font = { color: { argb: '0563C1' }, underline: true };
     }
   });
@@ -90,8 +89,8 @@ function populateWorksheet(worksheet, data) {
 
   // Auto-fit column widths
   worksheet.columns.forEach((col) => {
-    let maxLen = col.header.length;
-    col.eachCell({ includeEmpty: false }, (cell) => {
+    let maxLen = (col.header as string)?.length || 10;
+    col.eachCell?.({ includeEmpty: false }, (cell) => {
       const val = cell.value ? cell.value.toString() : '';
       if (val.length > maxLen) maxLen = val.length;
     });
@@ -104,10 +103,8 @@ function populateWorksheet(worksheet, data) {
 
 /**
  * Export business data to an Excel (.xlsx) file — single sheet mode.
- * @param {Object[]} data - Array of business objects
- * @param {string} outputPath - Output file path
  */
-async function exportToExcel(data, outputPath) {
+export async function exportToExcel(data: Business[], outputPath: string): Promise<string> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Naseem Ansari (Gitnaseem745)';
   workbook.created = new Date();
@@ -126,10 +123,8 @@ async function exportToExcel(data, outputPath) {
 
 /**
  * Export batch results to an Excel file — one sheet per city.
- * @param {Map<string, Object[]>} cityDataMap - Map of city name → business data array
- * @param {string} outputPath - Output file path
  */
-async function exportBatchToExcel(cityDataMap, outputPath) {
+export async function exportBatchToExcel(cityDataMap: Map<string, Business[]>, outputPath: string): Promise<string> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Naseem Ansari (Gitnaseem745)';
   workbook.created = new Date();
@@ -159,7 +154,7 @@ async function exportBatchToExcel(cityDataMap, outputPath) {
  * Sanitize a string for use as an Excel sheet name.
  * Max 31 characters, no [ ] * ? / \
  */
-function sanitizeSheetName(name) {
+function sanitizeSheetName(name: string): string {
   let sanitized = name
     .replace(/[[\]*?/\\]/g, '')
     .replace(/:/g, '-')
@@ -171,5 +166,3 @@ function sanitizeSheetName(name) {
     .join(' ');
   return sanitized.substring(0, 31) || 'Sheet';
 }
-
-module.exports = { exportToExcel, exportBatchToExcel };

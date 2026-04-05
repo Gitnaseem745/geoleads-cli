@@ -1,0 +1,22 @@
+# Source TypeScript files (npm only needs compiled JS)
+src/
+tsconfig.json
+
+# Dev and test files
+*.md
+!README.md
+*.txt
+*.xlsx
+*.csv
+
+# Build artifacts we don't need
+.git/
+.gitignore
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ignore all examples
+examples/

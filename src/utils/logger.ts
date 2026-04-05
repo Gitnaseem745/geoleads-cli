@@ -2,15 +2,16 @@
  * Colored logging utility using chalk.
  */
 
-const chalk = require('chalk');
+import chalk from 'chalk';
+import type { Business, Logger } from '../types';
 
-const logger = {
-  info: (msg) => console.log(chalk.cyan('ℹ ') + msg),
-  success: (msg) => console.log(chalk.green('✔ ') + msg),
-  warn: (msg) => console.log(chalk.yellow('⚠ ') + msg),
-  error: (msg) => console.log(chalk.red('✖ ') + msg),
-  dim: (msg) => console.log(chalk.gray('  ' + msg)),
-  banner: () => {
+const logger: Logger = {
+  info: (msg: string): void => console.log(chalk.cyan('ℹ ') + msg),
+  success: (msg: string): void => console.log(chalk.green('✔ ') + msg),
+  warn: (msg: string): void => console.log(chalk.yellow('⚠ ') + msg),
+  error: (msg: string): void => console.log(chalk.red('✖ ') + msg),
+  dim: (msg: string): void => console.log(chalk.gray('  ' + msg)),
+  banner: (): void => {
     console.log('');
     console.log(chalk.bold.cyan('  ┌─────────────────────────────────┐'));
     console.log(chalk.bold.cyan('  │') + chalk.bold.white('        GeoLeads v1.0.0          ') + chalk.bold.cyan('│'));
@@ -20,12 +21,12 @@ const logger = {
     console.log(chalk.bold.cyan('  └─────────────────────────────────┘'));
     console.log('');
   },
-  table: (data) => {
+  table: (data: Business[]): void => {
     if (data.length === 0) return;
     console.log('');
     console.log(chalk.bold('  Results Summary:'));
     console.log(chalk.gray('  ─'.repeat(20)));
-    data.forEach((item, i) => {
+    data.forEach((item: Business, i: number) => {
       console.log(chalk.white(`  ${i + 1}. `) + chalk.bold(item.name || 'N/A'));
       if (item.website) console.log(chalk.gray(`     🌐 ${item.website}`));
       if (item.phone) console.log(chalk.gray(`     📞 ${item.phone}`));
@@ -36,4 +37,4 @@ const logger = {
   },
 };
 
-module.exports = logger;
+export default logger;

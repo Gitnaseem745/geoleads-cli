@@ -12,16 +12,18 @@
  *   - logPrefix: prefix all log messages (used for parallel city scraping)
  */
 
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const { extractEmails } = require('../parser/extractData');
-const { isSocialMediaUrl } = require('../utils/validators');
-const { randomDelay, shortDelay, mediumDelay } = require('../utils/delay');
-const logger = require('../utils/logger');
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import type { Browser, Page, HTTPRequest } from 'puppeteer';
+import { extractEmails } from '../parser/extractData';
+import { isSocialMediaUrl } from '../utils/validators';
+import { randomDelay, shortDelay, mediumDelay } from '../utils/delay';
+import logger from '../utils/logger';
+import type { Business, ScrapeOptions } from '../types';
 
 puppeteer.use(StealthPlugin());
 
-const USER_AGENTS = [
+const USER_AGENTS: string[] = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -29,27 +31,24 @@ const USER_AGENTS = [
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 ];
 
-function getRandomUA() {
+function getRandomUA(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
 /**
  * Main scraping function.
- * @param {string} query - Search query
- * @param {number} limit - Max results
- * @param {Object} opts - Options { headful, skipEmails, onProgress, logPrefix }
  */
-async function scrapeGoogleMaps(query, limit, opts = {}) {
+export async function scrapeGoogleMaps(query: string, limit: number, opts: ScrapeOptions = {}): Promise<Business[]> {
   const { headful = false, skipEmails = false, onProgress = null, logPrefix = '' } = opts;
-  const businesses = [];
-  let browser;
+  const businesses: Business[] = [];
+  let browser: Browser | undefined;
 
   // Prefixed logger for clean parallel output
   const log = {
-    info: (msg) => logger.info(`${logPrefix}${msg}`),
-    dim: (msg) => logger.dim(`${logPrefix}${msg}`),
-    warn: (msg) => logger.warn(`${logPrefix}${msg}`),
-    error: (msg) => logger.error(`${logPrefix}${msg}`),
+    info: (msg: string) => logger.info(`${logPrefix}${msg}`),
+    dim: (msg: string) => logger.dim(`${logPrefix}${msg}`),
+    warn: (msg: string) => logger.warn(`${logPrefix}${msg}`),
+    error: (msg: string) => logger.error(`${logPrefix}${msg}`),
   };
 
   try {
@@ -59,7 +58,7 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
     log.info(`Launching browser (${headful ? 'headful' : 'headless'} mode)...`);
 
     browser = await puppeteer.launch({
-      headless: headful ? false : 'new',
+      headless: (headful ? false : 'new') as any,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -67,9 +66,9 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
         `--window-size=${vpW},${vpH}`,
       ],
       defaultViewport: { width: vpW, height: vpH },
-    });
+    }) as unknown as Browser;
 
-    const page = await browser.newPage();
+    const page: Page = await browser.newPage() as unknown as Page;
     await page.setUserAgent(getRandomUA());
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
@@ -85,12 +84,12 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
     try {
       const consentBtn = await page.$('button[id="L2AGLb"], button[aria-label*="Accept"]');
       if (consentBtn) { await consentBtn.click(); await shortDelay(); }
-    } catch (e) {}
+    } catch (e) { /* ignore */ }
 
     // Type query in search box
     log.info(`Searching for: "${query}"`);
 
-    let searchBox = await page.$('textarea[name="q"]');
+    let searchBox: any = await page.$('textarea[name="q"]');
     if (!searchBox) searchBox = await page.$('input[name="q"]');
     if (!searchBox) {
       await page.click('.a4bIc, .RNNXgb, .SDkEP');
@@ -119,9 +118,9 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
     const morePlacesClicked = await page.evaluate(() => {
       const allEls = document.querySelectorAll('a, span, div');
       for (const el of allEls) {
-        const text = el.textContent.trim().toLowerCase();
+        const text = (el as HTMLElement).textContent?.trim().toLowerCase() || '';
         if (text === 'more places' || text === 'more places ›' || text === 'more places >') {
-          el.click();
+          (el as HTMLElement).click();
           return true;
         }
       }
@@ -140,7 +139,7 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
       const placesClicked = await page.evaluate(() => {
         const navLinks = document.querySelectorAll('a');
         for (const link of navLinks) {
-          if (link.textContent.trim() === 'Places') { link.click(); return true; }
+          if (link.textContent?.trim() === 'Places') { link.click(); return true; }
         }
         return false;
       });
@@ -172,9 +171,9 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
 
     await shortDelay();
 
-    let listingCount = await page.$$eval('.rllt__link', (els) => els.length).catch(() => 0);
+    let listingCount = await page.$$eval('.rllt__link', (els: Element[]) => els.length).catch(() => 0);
     if (listingCount === 0) {
-      listingCount = await page.$$eval('[data-rc]', (els) => els.length).catch(() => 0);
+      listingCount = await page.$$eval('[data-rc]', (els: Element[]) => els.length).catch(() => 0);
     }
     if (listingCount === 0) {
       listingCount = await page.evaluate(() => {
@@ -224,9 +223,9 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
         const info = await extractFromDetailPanel(page);
 
         if (!info.name) {
-          const fallbackName = await page.evaluate((idx) => {
+          const fallbackName = await page.evaluate((idx: number) => {
             const items = document.querySelectorAll('.dbg0pd, .OSrXXb');
-            if (items[idx]) return items[idx].textContent.trim();
+            if (items[idx]) return (items[idx] as HTMLElement).textContent?.trim() || '';
             return '';
           }, i);
           info.name = fallbackName;
@@ -262,12 +261,12 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
 
         await randomDelay(1500, 3000);
       } catch (err) {
-        log.warn(`Error processing listing ${i + 1}: ${err.message}`);
+        log.warn(`Error processing listing ${i + 1}: ${(err as Error).message}`);
         continue;
       }
     }
   } catch (err) {
-    log.error(`Scraper error: ${err.message}`);
+    log.error(`Scraper error: ${(err as Error).message}`);
   } finally {
     if (browser) {
       await browser.close();
@@ -281,7 +280,7 @@ async function scrapeGoogleMaps(query, limit, opts = {}) {
 /**
  * Extract business info from the Google Places detail panel.
  */
-async function extractFromDetailPanel(page) {
+async function extractFromDetailPanel(page: Page): Promise<{ name: string; website: string; phone: string; address: string }> {
   return page.evaluate(() => {
     const result = { name: '', website: '', phone: '', address: '' };
 
@@ -293,30 +292,30 @@ async function extractFromDetailPanel(page) {
       document.querySelector('.kp-blk h2') ||
       document.querySelector('.SPZz6b span') ||
       document.querySelector('.qrShPb span');
-    if (nameEl) result.name = nameEl.textContent.trim();
+    if (nameEl) result.name = (nameEl as HTMLElement).textContent?.trim() || '';
 
     // ── Website ──
     const actionBtns = document.querySelectorAll('a.n1obkb, a.ab_button');
     for (const a of actionBtns) {
-      const text = a.textContent.trim().toLowerCase();
+      const text = (a as HTMLElement).textContent?.trim().toLowerCase() || '';
       if (text === 'website' || text.includes('website')) {
-        result.website = a.href || '';
+        result.website = (a as HTMLAnchorElement).href || '';
         break;
       }
     }
     if (!result.website) {
       const wEl = document.querySelector('a[data-attrid*="website"]');
-      if (wEl) result.website = wEl.href || '';
+      if (wEl) result.website = (wEl as HTMLAnchorElement).href || '';
     }
     if (!result.website) {
       const wLink = document.querySelector('a[aria-label*="Website"], a[aria-label*="website"]');
-      if (wLink) result.website = wLink.href || '';
+      if (wLink) result.website = (wLink as HTMLAnchorElement).href || '';
     }
 
     // ── Phone Number ──
     for (const a of actionBtns) {
-      const text = a.textContent.trim().toLowerCase();
-      const href = a.href || '';
+      const text = (a as HTMLElement).textContent?.trim().toLowerCase() || '';
+      const href = (a as HTMLAnchorElement).href || '';
       if (text === 'call' || text.includes('call')) {
         if (href.startsWith('tel:')) {
           result.phone = decodeURIComponent(href.replace('tel:', '')).trim();
@@ -326,11 +325,11 @@ async function extractFromDetailPanel(page) {
     }
     if (!result.phone) {
       const telLink = document.querySelector('a[href^="tel:"]');
-      if (telLink) result.phone = decodeURIComponent(telLink.href.replace('tel:', '')).trim();
+      if (telLink) result.phone = decodeURIComponent((telLink as HTMLAnchorElement).href.replace('tel:', '')).trim();
     }
     if (!result.phone) {
       const phoneEl = document.querySelector('[data-attrid*="phone"] .LrzXr');
-      if (phoneEl) result.phone = phoneEl.textContent.trim();
+      if (phoneEl) result.phone = (phoneEl as HTMLElement).textContent?.trim() || '';
     }
     if (!result.phone) {
       const callEl = document.querySelector('a[aria-label*="Call"], button[aria-label*="Call"]');
@@ -343,15 +342,15 @@ async function extractFromDetailPanel(page) {
 
     // ── Address ──
     const addrEl = document.querySelector('[data-attrid*="address"] .LrzXr');
-    if (addrEl) result.address = addrEl.textContent.trim();
+    if (addrEl) result.address = (addrEl as HTMLElement).textContent?.trim() || '';
     if (!result.address) {
       const locEl = document.querySelector('[data-attrid*="kc:/location"] .LrzXr');
-      if (locEl) result.address = locEl.textContent.trim();
+      if (locEl) result.address = (locEl as HTMLElement).textContent?.trim() || '';
     }
     if (!result.address) {
       const allSpans = document.querySelectorAll('.LrzXr');
       for (const span of allSpans) {
-        const text = span.textContent.trim();
+        const text = (span as HTMLElement).textContent?.trim() || '';
         if (text.includes(',') && text.length > 15 && !text.match(/^\d{1,2}:\d{2}/) && !text.match(/^\d{1,2}\s*(am|pm)/i)) {
           result.address = text;
           break;
@@ -366,14 +365,14 @@ async function extractFromDetailPanel(page) {
 /**
  * Visit a business website and try to extract email addresses.
  */
-async function scrapeEmailFromWebsite(browser, url) {
-  let page;
+async function scrapeEmailFromWebsite(browser: Browser, url: string): Promise<string> {
+  let page: Page | undefined;
   try {
-    page = await browser.newPage();
+    page = await browser.newPage() as unknown as Page;
     await page.setUserAgent(getRandomUA());
     await page.setRequestInterception(true);
 
-    page.on('request', (req) => {
+    page.on('request', (req: HTTPRequest) => {
       const type = req.resourceType();
       if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
         req.abort();
@@ -397,7 +396,7 @@ async function scrapeEmailFromWebsite(browser, url) {
         const cHtml = await page.content();
         const cEmails = extractEmails(cHtml);
         if (cEmails.length > 0) return cEmails[0];
-      } catch {}
+      } catch { /* ignore */ }
     }
 
     return '';
@@ -407,5 +406,3 @@ async function scrapeEmailFromWebsite(browser, url) {
     if (page) await page.close().catch(() => {});
   }
 }
-
-module.exports = { scrapeGoogleMaps };

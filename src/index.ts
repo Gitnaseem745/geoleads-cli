@@ -6,31 +6,32 @@
  * Entry point: orchestrates CLI parsing, scraping, and Excel export.
  *
  * Usage (single query):
- *   node scraper.js "restaurants in Delhi" --limit=10 --output=results.xlsx
+ *   geoleads "restaurants in Delhi" --limit=10 --output=results.xlsx
  *
  * Usage (batch mode — multi-city, sequential):
- *   node scraper.js "gym in [city]" --params=cities.txt --limit=10 -o gyms.xlsx
+ *   geoleads "gym in [city]" --params=cities.txt --limit=10 -o gyms.xlsx
  *
  * Usage (fast parallel mode):
- *   node scraper.js "gym in [city]" -p cities.txt -l 20 -c 5 --fast --skip-emails -o gyms.xlsx
+ *   geoleads "gym in [city]" -p cities.txt -l 20 -c 5 --fast --skip-emails -o gyms.xlsx
  */
 
-const { parseArgs } = require('./cli/index');
-const { scrapeGoogleMaps } = require('./scraper/mapsScraper');
-const { deduplicateBusinesses } = require('./parser/extractData');
-const { exportToExcel, exportBatchToExcel } = require('./exporter/excelExport');
-const logger = require('./utils/logger');
-const { setSpeed } = require('./utils/delay');
-const ora = require('ora');
+import { parseArgs } from './cli/index';
+import { scrapeGoogleMaps } from './scraper/mapsScraper';
+import { deduplicateBusinesses } from './parser/extractData';
+import { exportToExcel, exportBatchToExcel } from './exporter/excelExport';
+import logger from './utils/logger';
+import { setSpeed } from './utils/delay';
+import ora from 'ora';
+import type { Business } from './types';
 
-async function main() {
+async function main(): Promise<void> {
   logger.banner();
 
   let args;
   try {
     args = parseArgs();
   } catch (err) {
-    logger.error(err.message);
+    logger.error((err as Error).message);
     process.exit(1);
   }
 
@@ -52,7 +53,7 @@ async function main() {
 /**
  * Single query mode (original behavior).
  */
-async function runSingleMode(query, limit, output, headful, skipEmails) {
+async function runSingleMode(query: string, limit: number, output: string, headful: boolean, skipEmails: boolean): Promise<void> {
   logger.info(`Query:   "${query}"`);
   logger.info(`Limit:   ${limit}`);
   logger.info(`Output:  ${output}`);
@@ -66,7 +67,7 @@ async function runSingleMode(query, limit, output, headful, skipEmails) {
   const rawResults = await scrapeGoogleMaps(query, limit, {
     headful,
     skipEmails,
-    onProgress: (current, total) => {
+    onProgress: (current: number, total: number) => {
       spinner.text = `Processing listing ${current}/${total}...`;
     },
   });
@@ -95,7 +96,7 @@ async function runSingleMode(query, limit, output, headful, skipEmails) {
     exportSpinner.succeed('Excel export complete!');
   } catch (err) {
     exportSpinner.fail('Excel export failed.');
-    logger.error(err.message);
+    logger.error((err as Error).message);
     process.exit(1);
   }
 
@@ -109,7 +110,7 @@ async function runSingleMode(query, limit, output, headful, skipEmails) {
 /**
  * Batch mode — scrape multiple cities with optional parallel processing.
  */
-async function runBatchMode(queryTemplate, limit, output, headful, cities, concurrency, skipEmails) {
+async function runBatchMode(queryTemplate: string, limit: number, output: string, headful: boolean, cities: string[], concurrency: number, skipEmails: boolean): Promise<void> {
   logger.info(`Template:    "${queryTemplate}"`);
   logger.info(`Cities:      ${cities.length} (${cities.slice(0, 5).join(', ')}${cities.length > 5 ? '...' : ''})`);
   logger.info(`Limit:       ${limit} per city`);
@@ -126,7 +127,7 @@ async function runBatchMode(queryTemplate, limit, output, headful, cities, concu
 
   const startTime = Date.now();
 
-  let cityDataMap;
+  let cityDataMap: Map<string, Business[]>;
 
   if (concurrency <= 1) {
     // Sequential mode (original behavior)
@@ -151,7 +152,7 @@ async function runBatchMode(queryTemplate, limit, output, headful, cities, concu
     exportSpinner.succeed('Batch Excel export complete!');
   } catch (err) {
     exportSpinner.fail('Batch Excel export failed.');
-    logger.error(err.message);
+    logger.error((err as Error).message);
     process.exit(1);
   }
 
@@ -165,8 +166,8 @@ async function runBatchMode(queryTemplate, limit, output, headful, cities, concu
 /**
  * Run batch cities one at a time (original sequential behavior).
  */
-async function runSequentialBatch(queryTemplate, limit, headful, cities, skipEmails) {
-  const cityDataMap = new Map();
+async function runSequentialBatch(queryTemplate: string, limit: number, headful: boolean, cities: string[], skipEmails: boolean): Promise<Map<string, Business[]>> {
+  const cityDataMap = new Map<string, Business[]>();
 
   for (let c = 0; c < cities.length; c++) {
     const city = cities[c];
@@ -181,7 +182,7 @@ async function runSequentialBatch(queryTemplate, limit, headful, cities, skipEma
     const rawResults = await scrapeGoogleMaps(actualQuery, limit, {
       headful,
       skipEmails,
-      onProgress: (current, total) => {
+      onProgress: (current: number, total: number) => {
         spinner.text = `[${city}] Processing listing ${current}/${total}...`;
       },
     });
@@ -204,7 +205,7 @@ async function runSequentialBatch(queryTemplate, limit, headful, cities, skipEma
     // Pause between cities
     if (c < cities.length - 1) {
       logger.dim('  Waiting before next city...');
-      await new Promise((r) => setTimeout(r, 3000 + Math.random() * 2000));
+      await new Promise<void>((r) => setTimeout(r, 3000 + Math.random() * 2000));
     }
   }
 
@@ -215,13 +216,13 @@ async function runSequentialBatch(queryTemplate, limit, headful, cities, skipEma
  * Run batch cities in parallel using a worker pool.
  * At most `concurrency` cities are scraped simultaneously.
  */
-async function runParallelBatch(queryTemplate, limit, headful, cities, concurrency, skipEmails) {
-  const cityDataMap = new Map();
+async function runParallelBatch(queryTemplate: string, limit: number, headful: boolean, cities: string[], concurrency: number, skipEmails: boolean): Promise<Map<string, Business[]>> {
+  const cityDataMap = new Map<string, Business[]>();
   const totalCities = cities.length;
 
   // Track progress
   let completed = 0;
-  const activeWorkers = new Set();
+  const activeWorkers = new Set<string>();
 
   // Create a queue of cities to process
   const queue = [...cities];
@@ -229,7 +230,7 @@ async function runParallelBatch(queryTemplate, limit, headful, cities, concurren
   /**
    * Process a single city — launched as a parallel worker.
    */
-  async function processCity(city) {
+  async function processCity(city: string): Promise<void> {
     const actualQuery = queryTemplate.replace(/\[city\]/gi, city);
     const prefix = `[${city}] `;
 
@@ -256,7 +257,7 @@ async function runParallelBatch(queryTemplate, limit, headful, cities, concurren
         logger.success(msg);
       }
     } catch (err) {
-      logger.error(`${prefix}Failed: ${err.message}`);
+      logger.error(`${prefix}Failed: ${(err as Error).message}`);
       cityDataMap.set(city, []);
     }
 
@@ -265,9 +266,9 @@ async function runParallelBatch(queryTemplate, limit, headful, cities, concurren
   }
 
   // Worker pool: process cities with limited concurrency
-  const workers = [];
+  const workers: Promise<void>[] = [];
 
-  async function runWorker() {
+  async function runWorker(): Promise<void> {
     while (queue.length > 0) {
       const city = queue.shift();
       if (!city) break;
@@ -290,17 +291,17 @@ async function runParallelBatch(queryTemplate, limit, headful, cities, concurren
   await Promise.all(workers);
 
   // Reorder results to match original city order
-  const orderedMap = new Map();
+  const orderedMap = new Map<string, Business[]>();
   for (const city of cities) {
     if (cityDataMap.has(city)) {
-      orderedMap.set(city, cityDataMap.get(city));
+      orderedMap.set(city, cityDataMap.get(city)!);
     }
   }
 
   return orderedMap;
 }
 
-main().catch((err) => {
+main().catch((err: Error) => {
   logger.error(`Fatal error: ${err.message}`);
   process.exit(1);
 });

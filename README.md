@@ -127,11 +127,11 @@ GeoLeads/
 ├── parser/              # HTML DOM parsing, heuristic regex matchers, deduplication
 ├── exporter/            # ExcelJS generation, stylings, and multi-sheet routing
 ├── utils/               # Timing, standardized colored logging (Chalk/Ora), validators
-└── scraper.js           # CLI Command Orchestrator / Entry point
+└── index.ts             # CLI Command Orchestrator / Entry point
 ```
 
 > [!IMPORTANT]
-> **Extensibility**: The extraction logic in `parser/` is completely decoupled from the rendering in `scraper/`. If you wish to adapt GeoLeads to support an external API (like SerpApi or Apify), you only need to swap the `mapsScraper.js` module.
+> **Extensibility**: The extraction logic in `parser/` is completely decoupled from the rendering in `scraper/`. If you wish to adapt GeoLeads to support an external API (like SerpApi or Apify), you only need to swap the `mapsScraper.ts` module.
 
 ---
 
