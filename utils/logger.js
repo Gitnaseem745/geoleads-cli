@@ -15,6 +15,8 @@ const logger = {
     console.log(chalk.bold.cyan('  ┌─────────────────────────────────┐'));
     console.log(chalk.bold.cyan('  │') + chalk.bold.white('        GeoLeads v1.0.0          ') + chalk.bold.cyan('│'));
     console.log(chalk.bold.cyan('  │') + chalk.gray('   Google Maps Business Leads    ') + chalk.bold.cyan('│'));
+    console.log(chalk.bold.cyan('  ├─────────────────────────────────┤'));
+    console.log(chalk.bold.cyan('  │') + chalk.magenta(' By: Naseem Ansari (Gitnaseem745)') + chalk.bold.cyan('│'));
     console.log(chalk.bold.cyan('  └─────────────────────────────────┘'));
     console.log('');
   },

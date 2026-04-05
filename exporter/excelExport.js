@@ -109,7 +109,7 @@ function populateWorksheet(worksheet, data) {
  */
 async function exportToExcel(data, outputPath) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'GeoLeads';
+  workbook.creator = 'Naseem Ansari (Gitnaseem745)';
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet('Results', {
@@ -131,7 +131,7 @@ async function exportToExcel(data, outputPath) {
  */
 async function exportBatchToExcel(cityDataMap, outputPath) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'GeoLeads';
+  workbook.creator = 'Naseem Ansari (Gitnaseem745)';
   workbook.created = new Date();
 
   let sheetIndex = 0;
