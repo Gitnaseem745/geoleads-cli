@@ -1,0 +1,41 @@
+{
+  "name": "geoleads",
+  "version": "1.0.0",
+  "description": "CLI tool for extracting business leads from Google Maps",
+  "main": "scraper.js",
+  "bin": {
+    "geoleads": "./scraper.js"
+  },
+  "scripts": {
+    "start": "node scraper.js",
+    "scrape": "node scraper.js"
+  },
+  "keywords": [
+    "scraper",
+    "google-maps",
+    "lead-generation",
+    "excel",
+    "cli",
+    "geoleads"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sahil/geoleads-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sahil/geoleads-cli/issues"
+  },
+  "homepage": "https://github.com/Sahil/geoleads-cli#readme",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "cheerio": "^1.0.0",
+    "exceljs": "^4.4.0",
+    "ora": "^5.4.1",
+    "puppeteer": "^23.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "yargs": "^17.7.2"
+  }
+}

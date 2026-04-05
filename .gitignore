@@ -1,0 +1,26 @@
+# Node.js dependencies
+node_modules/
+
+# Excel Outputs
+*.xlsx
+*.csv
+
+# Text configs / inputs
+*.txt
+
+# Ignore all markdown files
+*.md
+
+# Except allow README.md
+!README.md
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
