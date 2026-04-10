@@ -15,7 +15,7 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import type { Browser, Page, HTTPRequest } from 'puppeteer';
-import { extractEmails } from '../parser/extractData';
+import { extractEmails, extractSocialLinks } from '../parser/extractData';
 import { isSocialMediaUrl } from '../utils/validators';
 import { randomDelay, shortDelay, mediumDelay } from '../utils/delay';
 import logger from '../utils/logger';
@@ -245,10 +245,13 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
           website = '';
         }
 
-        // Extract email from business website (skip if --skip-emails or social media)
+        // Extract email and social links from business website (skip if --skip-emails or social media)
         let email = '';
+        let extractedSocials: Partial<Business> = {};
         if (website && !skipEmails) {
-          email = await scrapeEmailFromWebsite(browser, website);
+          const webData = await scrapeDataFromWebsite(browser, website);
+          email = webData.email || '';
+          extractedSocials = webData;
         }
 
         businesses.push({
@@ -257,6 +260,10 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
           phone: info.phone || '',
           email: email || '',
           address: info.address || '',
+          facebook: extractedSocials.facebook || '',
+          instagram: extractedSocials.instagram || '',
+          twitter: extractedSocials.twitter || '',
+          linkedin: extractedSocials.linkedin || '',
         });
 
         await randomDelay(1500, 3000);
@@ -363,10 +370,11 @@ async function extractFromDetailPanel(page: Page): Promise<{ name: string; websi
 }
 
 /**
- * Visit a business website and try to extract email addresses.
+ * Visit a business website and try to extract email addresses and social links.
  */
-async function scrapeEmailFromWebsite(browser: Browser, url: string): Promise<string> {
+async function scrapeDataFromWebsite(browser: Browser, url: string): Promise<Partial<Business>> {
   let page: Page | undefined;
+  const result: Partial<Business> = { email: '' };
   try {
     page = await browser.newPage() as unknown as Page;
     await page.setUserAgent(getRandomUA());
@@ -384,24 +392,37 @@ async function scrapeEmailFromWebsite(browser: Browser, url: string): Promise<st
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await shortDelay();
 
-    const html = await page.content();
-    const emails = extractEmails(html);
-    if (emails.length > 0) return emails[0];
+    let html = await page.content();
+    result.email = extractEmails(html)[0] || '';
+    const socials = extractSocialLinks(html);
+    Object.assign(result, socials);
 
-    const contactPaths = ['/contact', '/contact-us', '/about', '/about-us'];
-    for (const cp of contactPaths) {
-      try {
-        await page.goto(new URL(cp, url).href, { waitUntil: 'domcontentloaded', timeout: 10000 });
-        await shortDelay();
-        const cHtml = await page.content();
-        const cEmails = extractEmails(cHtml);
-        if (cEmails.length > 0) return cEmails[0];
-      } catch { /* ignore */ }
+    // If missing data, try common contact pages
+    if (!result.email || !result.facebook || !result.instagram || !result.twitter || !result.linkedin) {
+      const contactPaths = ['/contact', '/contact-us', '/about', '/about-us'];
+      for (const cp of contactPaths) {
+        try {
+          await page.goto(new URL(cp, url).href, { waitUntil: 'domcontentloaded', timeout: 10000 });
+          await shortDelay();
+          html = await page.content();
+          
+          const moreEmails = extractEmails(html);
+          if (!result.email && moreEmails.length > 0) result.email = moreEmails[0];
+          
+          const moreSocials = extractSocialLinks(html);
+          if (!result.facebook) result.facebook = moreSocials.facebook;
+          if (!result.instagram) result.instagram = moreSocials.instagram;
+          if (!result.twitter) result.twitter = moreSocials.twitter;
+          if (!result.linkedin) result.linkedin = moreSocials.linkedin;
+
+          if (result.email && result.facebook && result.instagram && result.twitter && result.linkedin) break;
+        } catch { /* ignore */ }
+      }
     }
 
-    return '';
+    return result;
   } catch {
-    return '';
+    return result;
   } finally {
     if (page) await page.close().catch(() => {});
   }

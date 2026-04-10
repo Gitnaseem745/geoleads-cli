@@ -15,6 +15,10 @@ const COLUMNS: Partial<ExcelJS.Column>[] = [
   { header: 'Phone', key: 'phone', width: 22 },
   { header: 'Email', key: 'email', width: 35 },
   { header: 'Address', key: 'address', width: 50 },
+  { header: 'Facebook', key: 'facebook', width: 30 },
+  { header: 'Instagram', key: 'instagram', width: 30 },
+  { header: 'Twitter/X', key: 'twitter', width: 30 },
+  { header: 'LinkedIn', key: 'linkedin', width: 30 },
 ];
 
 /** Color palette for alternating tab colors in batch mode */

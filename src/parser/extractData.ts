@@ -46,6 +46,32 @@ export function extractEmails(html: string): string[] {
 }
 
 /**
+ * Extract social media links from HTML content.
+ */
+export function extractSocialLinks(html: string): Partial<Business> {
+  const social: Partial<Business> = {};
+  if (!html) return social;
+
+  const $ = cheerio.load(html);
+  $('a[href]').each((_: number, el: any) => {
+    const href = $(el).attr('href') || '';
+    const lower = href.toLowerCase();
+
+    if (lower.includes('facebook.com') || lower.includes('fb.com')) {
+      if (!social.facebook) social.facebook = href;
+    } else if (lower.includes('instagram.com')) {
+      if (!social.instagram) social.instagram = href;
+    } else if (lower.includes('twitter.com') || lower.includes('x.com')) {
+      if (!social.twitter) social.twitter = href;
+    } else if (lower.includes('linkedin.com')) {
+      if (!social.linkedin) social.linkedin = href;
+    }
+  });
+
+  return social;
+}
+
+/**
  * Deduplicate business entries by name.
  */
 export function deduplicateBusinesses(businesses: Business[]): Business[] {

@@ -9,6 +9,10 @@ export interface Business {
   phone: string;
   email: string;
   address: string;
+  facebook?: string;
+  instagram?: string;
+  twitter?: string;
+  linkedin?: string;
 }
 
 /** Parsed CLI arguments. */
