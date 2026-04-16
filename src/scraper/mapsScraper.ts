@@ -153,78 +153,114 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
     if (!onPlacesPage) {
       log.info('Navigating directly to local search results...');
       const encodedQuery = encodeURIComponent(query);
-      await page.goto(`https://www.google.com/search?q=${encodedQuery}&tbm=lcl`, {
+      await page.goto(`https://www.google.com/search?q=${encodedQuery}&udm=1`, {
         waitUntil: 'networkidle2',
         timeout: 15000,
       });
       await mediumDelay();
     }
 
-    // ── Step 3: Verify we have listings ─────────────────────────────
-    log.info('Looking for business listings...');
+    // ── Step 3 & 4: Pagination Loop & Extraction ─────────────────────
+    let pageNum = 1;
+    let totalProcessed = 0;
 
-    await page.waitForFunction(() => {
-      return document.querySelectorAll('.rllt__link, .cXedhc a, [data-rc]').length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      log.warn('No listing selectors found, trying broader search...');
-    });
+    while (businesses.length < limit) {
+      log.info(`--- Scanning Page ${pageNum} ---`);
+      log.info('Looking for business listings...');
 
-    await shortDelay();
-
-    let listingCount = await page.$$eval('.rllt__link', (els: Element[]) => els.length).catch(() => 0);
-    if (listingCount === 0) {
-      listingCount = await page.$$eval('[data-rc]', (els: Element[]) => els.length).catch(() => 0);
-    }
-    if (listingCount === 0) {
-      listingCount = await page.evaluate(() => {
-        return document.querySelectorAll('.VkpGBb, .rllt__link, .cXedhc a').length;
+      await page.waitForFunction(() => {
+        return document.querySelectorAll('.VkpGBb, .rllt__link, .cXedhc, [data-rc]').length > 0;
+      }, { timeout: 15000 }).catch(() => {
+        log.warn('No listing selectors found on this page...');
       });
-    }
 
-    const targetCount = Math.min(listingCount, limit);
-    log.info(`Found ${listingCount} listings, will process ${targetCount}`);
+      await shortDelay();
 
-    if (targetCount === 0) {
-      log.warn('No business listings found.');
-      const debugInfo = await page.evaluate(() => ({
-        title: document.title, url: window.location.href,
-      }));
-      log.dim(`Page: ${debugInfo.title}`);
-      log.dim(`URL: ${debugInfo.url}`);
-      return [];
-    }
+      // Try listing selectors in order of reliability for current Google Places UI
+      let listingSelector = '.VkpGBb';
+      let listingCount = await page.$$eval(listingSelector, (els: Element[]) => els.length).catch(() => 0);
+      if (listingCount === 0) {
+        listingSelector = '.rllt__link';
+        listingCount = await page.$$eval(listingSelector, (els: Element[]) => els.length).catch(() => 0);
+      }
+      if (listingCount === 0) {
+        listingSelector = '.cXedhc';
+        listingCount = await page.$$eval(listingSelector, (els: Element[]) => els.length).catch(() => 0);
+      }
+      if (listingCount === 0) {
+        listingSelector = '[data-rc]';
+        listingCount = await page.$$eval(listingSelector, (els: Element[]) => els.length).catch(() => 0);
+      }
 
-    // ── Step 4: Process each listing ────────────────────────────────
-    for (let i = 0; i < targetCount; i++) {
-      try {
-        if (onProgress) onProgress(i + 1, targetCount);
+      if (listingCount === 0) {
+        log.warn('No business listings found on this page. Stopping.');
+        if (pageNum === 1) {
+          const debugInfo = await page.evaluate(() => ({
+            title: document.title, url: window.location.href,
+          }));
+          log.dim(`Page: ${debugInfo.title}`);
+          log.dim(`URL: ${debugInfo.url}`);
+        }
+        break; // Exit loop if no listings found
+      }
 
-        const listings = await page.$$('.rllt__link');
+      const remainingLimit = limit - businesses.length;
+      const targetCount = Math.min(listingCount, remainingLimit);
+      log.info(`Found ${listingCount} listings on page ${pageNum}, extracting ${targetCount}`);
+
+      for (let i = 0; i < targetCount; i++) {
+        try {
+          totalProcessed++;
+          if (onProgress) onProgress(totalProcessed, limit);
+
+        const listings = await page.$$(listingSelector);
         if (i >= listings.length) {
           log.warn(`Listing ${i + 1} index out of range, skipping.`);
           continue;
         }
 
+        // Extract name from the listing card BEFORE clicking (by index)
+        const listingName = await page.evaluate((idx: number, sel: string) => {
+          const items = document.querySelectorAll(sel);
+          if (!items[idx]) return '';
+          // Name is in .dbg0pd .OSrXXb or .OSrXXb within the listing
+          const nameEl = items[idx].querySelector('.OSrXXb') || 
+                         items[idx].querySelector('.dbg0pd') ||
+                         items[idx].querySelector('[role="heading"]');
+          if (nameEl) return (nameEl as HTMLElement).textContent?.trim() || '';
+          // Fallback: try the rllt__details inside the listing
+          const detEl = items[idx].querySelector('.rllt__details .dbg0pd');
+          if (detEl) return (detEl as HTMLElement).textContent?.trim() || '';
+          return '';
+        }, i, listingSelector);
+
+        // Click the listing to open detail panel
         await listings[i].click();
         await mediumDelay();
 
-        await page.waitForSelector('.xpdopen, .kp-blk, .o5v3Gd, .SPZz6b', { timeout: 8000 }).catch(() => {});
+        // Wait for detail panel to load (action buttons / info sections)
+        await page.waitForSelector('.bkaPDb, .OYzgjc, .zhZ3gf, [data-phone-number], .C9waJd', { timeout: 8000 }).catch(() => {});
         await shortDelay();
 
-        // Scroll detail panel
+        // Scroll detail panel to ensure all info is rendered
         await page.evaluate(() => {
-          const panels = document.querySelectorAll('.xpdopen, .kp-blk, .o5v3Gd');
+          const panels = document.querySelectorAll('.OYzgjc, .zhZ3gf, .xpdopen, .kp-blk, .o5v3Gd');
           for (const p of panels) {
             if (p.scrollHeight > p.clientHeight) p.scrollTop = p.scrollHeight;
           }
         });
         await shortDelay();
 
+        // Extract phone, website, address from the detail panel
         const info = await extractFromDetailPanel(page);
 
+        // Use the name from the listing card (reliable), not from detail panel
+        info.name = listingName || info.name;
+
         if (!info.name) {
+          // Final fallback: try by index from .dbg0pd or .OSrXXb
           const fallbackName = await page.evaluate((idx: number) => {
-            const items = document.querySelectorAll('.dbg0pd, .OSrXXb');
+            const items = document.querySelectorAll('.dbg0pd .OSrXXb, .OSrXXb');
             if (items[idx]) return (items[idx] as HTMLElement).textContent?.trim() || '';
             return '';
           }, i);
@@ -236,7 +272,9 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
           continue;
         }
 
-        log.dim(`${i + 1}/${targetCount}: ${info.name}`);
+        log.dim(`${businesses.length + 1}/${limit}: ${info.name}`);
+        if (info.phone) log.dim(`  📞 ${info.phone}`);
+        if (info.address) log.dim(`  📍 ${info.address}`);
 
         // Filter out social media websites
         let website = info.website || '';
@@ -272,6 +310,26 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
         continue;
       }
     }
+
+    if (businesses.length >= limit) {
+      log.info(`Reached target limit of ${limit}. Stopping.`);
+      break;
+    }
+
+    log.info('Checking for next page...');
+    const nextBtn = await page.$('#pnnext, a[aria-label="Next page"], a[aria-label="Next"], button[aria-label="Next page"], button[aria-label="Next"]');
+    if (!nextBtn) {
+      log.info('No more pages found. Reached end of results.');
+      break;
+    }
+
+    log.info(`Navigating to Page ${pageNum + 1}...`);
+    const navPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+    await nextBtn.click().catch(() => page.evaluate((el: any) => el.click(), nextBtn));
+    await navPromise;
+    await mediumDelay();
+    pageNum++;
+  }
   } catch (err) {
     log.error(`Scraper error: ${(err as Error).message}`);
   } finally {
@@ -286,28 +344,58 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
 
 /**
  * Extract business info from the Google Places detail panel.
+ * 
+ * Selectors verified against live Google Places HTML (udm=1 local results):
+ *   - Name:    .dbg0pd[role="heading"] > span.OSrXXb
+ *   - Website: a.n1obkb with span.aSAiSd "Website"
+ *   - Phone:   [data-phone-number] attr on call button, or div.C9waJd text
+ *   - Address: div.C9waJd.y7xX3d > div > span
  */
 async function extractFromDetailPanel(page: Page): Promise<{ name: string; website: string; phone: string; address: string }> {
   return page.evaluate(() => {
     const result = { name: '', website: '', phone: '', address: '' };
 
     // ── Business Name ──
-    const nameEl =
-      document.querySelector('h2[data-attrid="title"]') ||
-      document.querySelector('.xpdopen h2') ||
-      document.querySelector('span[role="heading"]') ||
-      document.querySelector('.kp-blk h2') ||
-      document.querySelector('.SPZz6b span') ||
-      document.querySelector('.qrShPb span');
-    if (nameEl) result.name = (nameEl as HTMLElement).textContent?.trim() || '';
+    // Primary: The expanded detail panel header (used by Google Places udm=1)
+    // The detail panel shows a heading in .SPZz6b or as part of the expanded card
+    // But the name is also always in the listing card: .dbg0pd > .OSrXXb
+    // Try multiple approaches:
+    
+    // 1. Try the detail panel heading area
+    const detailHeadings = document.querySelectorAll('.SPZz6b span, h2[data-attrid="title"], .qrShPb span');
+    for (const h of detailHeadings) {
+      const rect = (h as HTMLElement).getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        result.name = (h as HTMLElement).textContent?.trim() || '';
+        if (result.name) break;
+      }
+    }
+
+    // 2. Fallback: Get name from the active/highlighted listing card
+    if (!result.name) {
+      const activeListings = document.querySelectorAll('.dbg0pd .OSrXXb');
+      for (const el of activeListings) {
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          result.name = (el as HTMLElement).textContent?.trim() || '';
+          if (result.name) break;
+        }
+      }
+    }
 
     // ── Website ──
-    const actionBtns = document.querySelectorAll('a.n1obkb, a.ab_button');
-    for (const a of actionBtns) {
-      const text = (a as HTMLElement).textContent?.trim().toLowerCase() || '';
-      if (text === 'website' || text.includes('website')) {
-        result.website = (a as HTMLAnchorElement).href || '';
-        break;
+    // Google Places uses action buttons: a.n1obkb with inner span.aSAiSd
+    // The "Website" button has href pointing to the business site
+    const allActionBtns = document.querySelectorAll('a.n1obkb, a.ab_button');
+    for (const btn of allActionBtns) {
+      const labelSpan = btn.querySelector('.aSAiSd');
+      const btnText = (labelSpan || btn as HTMLElement).textContent?.trim().toLowerCase() || '';
+      if (btnText === 'website' || btnText === 'site') {
+        const href = (btn as HTMLAnchorElement).href || '';
+        if (href && href.startsWith('http')) {
+          result.website = href;
+          break;
+        }
       }
     }
     if (!result.website) {
@@ -320,49 +408,125 @@ async function extractFromDetailPanel(page: Page): Promise<{ name: string; websi
     }
 
     // ── Phone Number ──
-    for (const a of actionBtns) {
-      const text = (a as HTMLElement).textContent?.trim().toLowerCase() || '';
-      const href = (a as HTMLAnchorElement).href || '';
-      if (text === 'call' || text.includes('call')) {
-        if (href.startsWith('tel:')) {
-          result.phone = decodeURIComponent(href.replace('tel:', '')).trim();
-        }
-        break;
-      }
+    // PRIMARY: data-phone-number attribute on the call button
+    // This is the most reliable source - Google puts the raw number here
+    // Pattern: <a class="Od1FEc n1obkb" data-phone-number="09176707070" aria-label="Call">
+    const phoneBtn = document.querySelector('[data-phone-number]');
+    if (phoneBtn) {
+      result.phone = phoneBtn.getAttribute('data-phone-number') || '';
     }
+
+    // Fallback 1: tel: link
     if (!result.phone) {
       const telLink = document.querySelector('a[href^="tel:"]');
-      if (telLink) result.phone = decodeURIComponent((telLink as HTMLAnchorElement).href.replace('tel:', '')).trim();
+      if (telLink) {
+        result.phone = decodeURIComponent((telLink as HTMLAnchorElement).href.replace('tel:', '')).trim();
+      }
     }
+
+    // Fallback 2: aria-label on Call button often contains the number
     if (!result.phone) {
-      const phoneEl = document.querySelector('[data-attrid*="phone"] .LrzXr');
-      if (phoneEl) result.phone = (phoneEl as HTMLElement).textContent?.trim() || '';
+      const callBtn = document.querySelector('[aria-label*="Call"]');
+      if (callBtn) {
+        if (callBtn.hasAttribute('data-phone-number')) {
+          result.phone = callBtn.getAttribute('data-phone-number') || '';
+        } else {
+          const label = callBtn.getAttribute('aria-label') || '';
+          const match = label.match(/[\d\s\-\+\(\)]{7,}/);
+          if (match) result.phone = match[0].trim();
+        }
+      }
     }
+
+    // Fallback 3: Phone shown in detail panel as div.C9waJd text (without .y7xX3d class)
+    // Pattern: <div class="C9waJd ">091767 07070</div>
     if (!result.phone) {
-      const callEl = document.querySelector('a[aria-label*="Call"], button[aria-label*="Call"]');
-      if (callEl) {
-        const label = callEl.getAttribute('aria-label') || '';
-        const match = label.match(/[\d\s\-\+\(\)]{7,}/);
-        if (match) result.phone = match[0].trim();
+      const c9divs = document.querySelectorAll('.C9waJd');
+      for (const div of c9divs) {
+        // Skip address divs (they have y7xX3d class)
+        if ((div as HTMLElement).classList.contains('y7xX3d')) continue;
+        const txt = (div as HTMLElement).textContent?.trim() || '';
+        // Match phone number patterns
+        if (/^[\d\s\-\+\(\)]{7,20}$/.test(txt)) {
+          result.phone = txt;
+          break;
+        }
+      }
+    }
+
+    // Fallback 4: Phone shown inline in the listing card text
+    // Pattern: <div>Open 24 hours</span> · 091767 07070</div>
+    if (!result.phone) {
+      const allDivs = document.querySelectorAll('.rllt__details div, .OYzgjc div');
+      for (const div of allDivs) {
+        const txt = (div as HTMLElement).textContent?.trim() || '';
+        // Look for phone at end of text after · separator  
+        const phoneMatch = txt.match(/·\s*([\d\s\-\+\(\)]{7,20})$/);
+        if (phoneMatch) {
+          result.phone = phoneMatch[1].trim();
+          break;
+        }
+        // Or standalone phone
+        if (/^[\d\s\-\+\(\)]{7,20}$/.test(txt) && txt.length >= 7 && txt.length <= 20) {
+          result.phone = txt;
+          break;
+        }
       }
     }
 
     // ── Address ──
-    const addrEl = document.querySelector('[data-attrid*="address"] .LrzXr');
-    if (addrEl) result.address = (addrEl as HTMLElement).textContent?.trim() || '';
-    if (!result.address) {
-      const locEl = document.querySelector('[data-attrid*="kc:/location"] .LrzXr');
-      if (locEl) result.address = (locEl as HTMLElement).textContent?.trim() || '';
+    // PRIMARY: div.C9waJd.y7xX3d contains the full address
+    // Pattern: <div class="C9waJd y7xX3d"><div><span>FULL ADDRESS</span></div></div>
+    const addrDiv = document.querySelector('.C9waJd.y7xX3d');
+    if (addrDiv) {
+      result.address = (addrDiv as HTMLElement).textContent?.trim() || '';
     }
+
+    // Fallback 1: eSHGZ div with location icon nearby (pin icon SVG path)
     if (!result.address) {
-      const allSpans = document.querySelectorAll('.LrzXr');
-      for (const span of allSpans) {
-        const text = (span as HTMLElement).textContent?.trim() || '';
-        if (text.includes(',') && text.length > 15 && !text.match(/^\d{1,2}:\d{2}/) && !text.match(/^\d{1,2}\s*(am|pm)/i)) {
-          result.address = text;
+      const eshgzDivs = document.querySelectorAll('[jsname="eSHGZ"]');
+      for (const div of eshgzDivs) {
+        const txt = (div as HTMLElement).textContent?.trim() || '';
+        // Address heuristics: contains comma, reasonably long, not a phone
+        if (txt.includes(',') && txt.length > 10 && txt.length < 200
+          && !(/^[\d\s\-\+\(\)]{7,20}$/.test(txt))
+          && !txt.match(/^\d{1,2}:\d{2}/)
+          && !txt.match(/^\d{1,2}\s*(am|pm)/i)
+          && !txt.match(/^Open|^Closed/i)) {
+          result.address = txt;
           break;
         }
       }
+    }
+
+    // Fallback 2: Location data from listing card (city/state)
+    if (!result.address) {
+      const locSpans = document.querySelectorAll('.nICndb, .cyspcb');
+      for (const span of locSpans) {
+        const txt = (span as HTMLElement).textContent?.trim().replace(/[⁦⁩]/g, '') || '';
+        if (txt.includes(',') && txt.length > 5 && !txt.match(/^Open|^Closed/i)) {
+          result.address = txt;
+          break;
+        }
+      }
+    }
+
+    // Fallback 3: data-attrid based (legacy Google layout)
+    if (!result.address) {
+      const attrAddr = document.querySelector('[data-attrid*="address"] .LrzXr, [data-attrid*="location"] .LrzXr');
+      if (attrAddr) result.address = (attrAddr as HTMLElement).textContent?.trim() || '';
+    }
+
+    // ── Clean up ──
+    if (result.phone) {
+      // Format phone: keep only digits, spaces, +, (, ), -
+      result.phone = result.phone.replace(/[^\d+()\s-]/g, '').trim();
+      // If phone starts with 0 and is Indian format, add spacing
+    }
+    if (result.address) {
+      result.address = result.address.replace(/^Address:\s*/i, '').trim();
+      // Remove unicode directional marks
+      result.address = result.address.replace(/[⁦⁩]/g, '').trim();
     }
 
     return result;
