@@ -4,7 +4,7 @@
   "description": "CLI tool for extracting business leads from Google Maps",
   "main": "dist/index.js",
   "bin": {
-    "geoleads": "./dist/index.js"
+    "geoleads": "dist/index.js"
   },
   "files": [
     "dist"

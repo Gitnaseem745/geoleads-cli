@@ -20,11 +20,13 @@ Whether you're building targeted B2B contact lists, auditing local competitors, 
 ## ✨ Features
 
 - 🕵️ **Advanced Stealth Automation**: Utilizes `puppeteer-extra-plugin-stealth` with randomized User-Agent rotation and human-like delay heuristics to bypass basic bot-detection mechanisms.
-- 🏢 **Deep Data Extraction**: Scrapes business names, addresses, phone numbers, and websites natively from Google Maps.
+- 🏢 **Deep Data Extraction**: Scrapes business names, addresses, phone numbers, and websites from Google Places with multi-layered fallback selectors verified against live Google DOM structures.
+- 📄 **Multi-Page Pagination**: Automatically navigates through all available result pages to extract beyond the first 20 listings.
 - 📧 **Intelligent Email Discovery**: Automatically crawls discovered business websites (scanning homepages, `/contact`, and `/about` pages) using heuristic regex matching to find valid email addresses.
 - ⚡ **High-Performance Batch Processing**: Built-in multi-city sequential and parallel processing capabilities with worker pools to drastically reduce processing time on large datasets.
 - 📊 **Enterprise Excel Exports**: Generates beautiful `.xlsx` files with structured columns, frozen headers, clickable hyperlinked cells (for emails and URLs), and automatic column width adjustment.
 - 🔄 **Smart Deduplication**: Prevents duplicate entries based on business names inside processing batches.
+- 🛡️ **Resilient Extraction**: Uses attribute-based selectors (`data-phone-number`, `.C9waJd.y7xX3d`) instead of fragile class-based selectors for reliable data extraction across Google UI updates.
 
 ---
 
@@ -35,6 +37,12 @@ GeoLeads requires **Node.js (v18 or higher)**. Installing it globally allows you
 ```bash
 # Install globally via npm
 npm install -g geoleads
+```
+
+Or run directly without installing:
+
+```bash
+npx geoleads "restaurants in Delhi" --limit=20
 ```
 
 *(Alternatively, you can clone the repository and run `npm link` to install it locally for development).*
@@ -59,6 +67,14 @@ If you are experiencing timeouts or want to see the automation in real-time, ena
 
 ```bash
 geoleads "digital marketing agencies in London" --limit=10 --headful
+```
+
+### Skip Email Scraping (Faster)
+
+If you only need business details (name, phone, address, website) and want to skip the slower email discovery process:
+
+```bash
+geoleads "wedding planners in Bangalore" --limit=50 --skip-emails
 ```
 
 ---
@@ -113,6 +129,24 @@ geoleads "cafes in [city]" -p cities.txt -l 20 -c 3 --fast --skip-emails -o cafe
 | `--fast` | | `false` | Reduces built-in delays by 75% for rapid execution. |
 | `--skip-emails`| | `false` | Bypasses navigating to individual websites to locate emails. |
 | `--help` | `-h` | | Displays the help menu and examples. |
+
+---
+
+## 📋 Output Data
+
+Each scraped business includes the following fields in the exported Excel file:
+
+| Column | Description |
+| :--- | :--- |
+| **Business Name** | Name of the business listing |
+| **Website** | Business website URL (social media URLs are filtered out) |
+| **Phone** | Phone number extracted via `data-phone-number` attribute |
+| **Email** | Email discovered from business website (if `--skip-emails` is not used) |
+| **Address** | Full street address from Google Places detail panel |
+| **Facebook** | Facebook page URL (if found on business website) |
+| **Instagram** | Instagram profile URL (if found) |
+| **Twitter** | Twitter/X profile URL (if found) |
+| **LinkedIn** | LinkedIn profile URL (if found) |
 
 ---
 
