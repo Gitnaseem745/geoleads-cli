@@ -276,20 +276,27 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
         if (info.phone) log.dim(`  📞 ${info.phone}`);
         if (info.address) log.dim(`  📍 ${info.address}`);
 
-        // Filter out social media websites
+        // Handle social media websites listed as the main website
         let website = info.website || '';
+        let extractedSocials: Partial<Business> = {};
+
         if (website && isSocialMediaUrl(website)) {
-          log.dim(`  ↳ Skipping social media URL: ${website}`);
+          log.dim(`  ↳ Found social media URL instead of website: ${website}`);
+          const lowerUrl = website.toLowerCase();
+          if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.com')) extractedSocials.facebook = website;
+          else if (lowerUrl.includes('instagram.com')) extractedSocials.instagram = website;
+          else if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) extractedSocials.twitter = website;
+          else if (lowerUrl.includes('linkedin.com')) extractedSocials.linkedin = website;
+          
           website = '';
         }
 
         // Extract email and social links from business website (skip if --skip-emails or social media)
         let email = '';
-        let extractedSocials: Partial<Business> = {};
         if (website && !skipEmails) {
           const webData = await scrapeDataFromWebsite(browser, website);
           email = webData.email || '';
-          extractedSocials = webData;
+          extractedSocials = { ...extractedSocials, ...webData };
         }
 
         businesses.push({
