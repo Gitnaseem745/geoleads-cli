@@ -127,8 +127,43 @@ export function validateAndReadParams(filePath: string): string[] {
 }
 
 /**
+ * Validate and read the keywords file (one keyword per line).
+ * Blank lines are treated as separators and are skipped.
+ */
+export function validateAndReadKeywords(filePath: string): string[] {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('Keywords file path must be a non-empty string.');
+  }
+
+  const resolvedPath = path.resolve(filePath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`Keywords file not found: ${resolvedPath}`);
+  }
+
+  const content = fs.readFileSync(resolvedPath, 'utf-8');
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+
+  if (lines.length === 0) {
+    throw new Error('Keywords file is empty. Add one keyword per line.');
+  }
+
+  return lines;
+}
+
+/**
  * Validate that query contains [city] placeholder when params mode is used.
  */
 export function hasPlaceholder(query: string): boolean {
   return query.includes('[city]');
+}
+
+/**
+ * Check if query contains [keyword] placeholder.
+ */
+export function hasKeywordPlaceholder(query: string): boolean {
+  return query.includes('[keyword]');
 }

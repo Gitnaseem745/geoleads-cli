@@ -23,6 +23,8 @@ export interface ParsedArgs {
   headful: boolean;
   batchMode: boolean;
   cities: string[];
+  keywords: string[];
+  multiKeywordMode: boolean;
   concurrency: number;
   fast: boolean;
   skipEmails: boolean;

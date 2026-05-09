@@ -4,7 +4,7 @@
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { validateQuery, validateLimit, validateOutput, validateAndReadParams, hasPlaceholder } from '../utils/validators';
+import { validateQuery, validateLimit, validateOutput, validateAndReadParams, validateAndReadKeywords, hasPlaceholder, hasKeywordPlaceholder } from '../utils/validators';
 import type { ParsedArgs } from '../types';
 
 /**
@@ -15,7 +15,7 @@ export function parseArgs(): ParsedArgs {
     .usage('Usage: geoleads <query> [options]')
     .command('$0 <query>', 'Extract business leads from Google Maps', (yargs) => {
       yargs.positional('query', {
-        describe: 'Search query (e.g., "restaurants in Delhi" or "gym in [city]")',
+        describe: 'Search query (e.g., "restaurants in Delhi" or "[keyword] [city]")',
         type: 'string',
       });
     })
@@ -41,6 +41,11 @@ export function parseArgs(): ParsedArgs {
       type: 'string',
       describe: 'Path to a text file with city names (one per line). Use with [city] placeholder in query.',
     })
+    .option('keywords', {
+      alias: 'k',
+      type: 'string',
+      describe: 'Path to a text file with keywords (one per line). Use with [keyword] placeholder in query.',
+    })
     .option('concurrency', {
       alias: 'c',
       type: 'number',
@@ -62,6 +67,9 @@ export function parseArgs(): ParsedArgs {
     .example('', '')
     .example('--- Batch Mode (multi-city) ---', '')
     .example('geoleads "gym in [city]" --params=cities.txt --limit=10 -o gyms.xlsx', '')
+    .example('', '')
+    .example('--- Multi-Keyword + Multi-City Mode ---', '')
+    .example('geoleads "[keyword] [city]" -k keywords.txt -p cities.txt -c 5 --fast --skip-emails -o leads.xlsx', '')
     .example('', '')
     .example('--- Fast Parallel Mode ---', '')
     .example('geoleads "gym in [city]" -p cities.txt -l 20 -c 5 --fast --skip-emails -o gyms.xlsx', '')
@@ -89,6 +97,22 @@ export function parseArgs(): ParsedArgs {
   // Handle batch mode (--params)
   let batchMode = false;
   let cities: string[] = [];
+  let keywords: string[] = [];
+  let multiKeywordMode = false;
+
+  // Read keywords file if provided
+  if (argv.keywords) {
+    keywords = validateAndReadKeywords(argv.keywords as string);
+
+    if (!hasKeywordPlaceholder(query)) {
+      throw new Error(
+        'When using --keywords, the query must contain [keyword] placeholder.\n' +
+        'Example: geoleads "[keyword] [city]" --keywords=keywords.txt --params=cities.txt'
+      );
+    }
+
+    multiKeywordMode = true;
+  }
 
   if (argv.params) {
     cities = validateAndReadParams(argv.params as string);
@@ -103,5 +127,13 @@ export function parseArgs(): ParsedArgs {
     batchMode = true;
   }
 
-  return { query, limit, output, headful, batchMode, cities, concurrency, fast, skipEmails };
+  // Multi-keyword mode requires both --keywords and --params
+  if (multiKeywordMode && !batchMode) {
+    throw new Error(
+      'Multi-keyword mode requires --params (cities file) as well.\n' +
+      'Example: geoleads "[keyword] [city]" -k keywords.txt -p cities.txt'
+    );
+  }
+
+  return { query, limit, output, headful, batchMode, cities, keywords, multiKeywordMode, concurrency, fast, skipEmails };
 }
