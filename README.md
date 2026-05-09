@@ -13,20 +13,20 @@
 
 **GeoLeads** is a powerful, highly-optimized command-line interface (CLI) designed for local and international lead generation. Built dynamically on top of Node.js and Puppeteer, it navigates Google Maps using advanced stealth techniques to effortlessly extract rich business data and export it directly into structured, ready-to-use Excel (`.xlsx`) files.
 
-Whether you're building targeted B2B contact lists, auditing local competitors, or enriching a CRM, GeoLeads provides a robust pipeline that mitigates bot-detection while maximizing data yield.
+Version 1.3.0 introduces a major architecture shift, migrating from traditional Google Search parsing to **direct Google Maps navigation**. This ensures 100% bypass of "Local Pack" UI changes and provides much higher reliability for data extraction.
 
 ---
 
 ## ✨ Features
 
 - 🕵️ **Advanced Stealth Automation**: Utilizes `puppeteer-extra-plugin-stealth` with randomized User-Agent rotation and human-like delay heuristics to bypass basic bot-detection mechanisms.
-- 🏢 **Deep Data Extraction**: Scrapes business names, addresses, phone numbers, and websites from Google Places with multi-layered fallback selectors verified against live Google DOM structures.
-- 📄 **Multi-Page Pagination**: Automatically navigates through all available result pages to extract beyond the first 20 listings.
+- 🏢 **Direct Maps Navigation**: Navigates directly to `google.com/maps` to bypass the fragile Google Search "Local Pack" UI, ensuring robust extraction even when Google updates its search results page.
+- 🏢 **Deep Data Extraction**: Scrapes business names, addresses, phone numbers, and websites using reliable attribute-based selectors (`data-item-id`).
+- 📄 **Infinite Scroll Support**: Automatically handles Maps feed scrolling to load and extract all available listings for a given query.
 - 📧 **Intelligent Email Discovery**: Automatically crawls discovered business websites (scanning homepages, `/contact`, and `/about` pages) using heuristic regex matching to find valid email addresses.
-- ⚡ **High-Performance Batch Processing**: Built-in multi-city sequential and parallel processing capabilities with worker pools to drastically reduce processing time on large datasets.
-- 📊 **Enterprise Excel Exports**: Generates beautiful `.xlsx` files with structured columns, frozen headers, clickable hyperlinked cells (for emails and URLs), and automatic column width adjustment.
+- ⚡ **Bulk Lead Generation**: Built-in multi-keyword and multi-city processing capabilities with worker pools to scrape thousands of leads in a single run.
+- 📊 **Enterprise Excel Exports**: Generates beautiful `.xlsx` files with structured columns, frozen headers, clickable hyperlinked cells, and a built-in **Remarks** column for calling/sales notes.
 - 🔄 **Smart Deduplication**: Prevents duplicate entries based on business names inside processing batches.
-- 🛡️ **Resilient Extraction**: Uses attribute-based selectors (`data-phone-number`, `.C9waJd.y7xX3d`) instead of fragile class-based selectors for reliable data extraction across Google UI updates.
 
 ---
 
@@ -42,10 +42,9 @@ npm install -g geoleads
 Or run directly without installing:
 
 ```bash
+# Run with npx
 npx geoleads "restaurants in Delhi" --limit=20
 ```
-
-*(Alternatively, you can clone the repository and run `npm link` to install it locally for development).*
 
 ---
 
@@ -63,7 +62,7 @@ geoleads "restaurants in Delhi" --limit=20 --output=delhi_restaurants.xlsx
 
 ### Visual Debugging (Headful Mode)
 
-If you are experiencing timeouts or want to see the automation in real-time, enable `--headful` mode to watch the browser window.
+If you want to see the automation in real-time, enable `--headful` mode to watch the browser window.
 
 ```bash
 geoleads "digital marketing agencies in London" --limit=10 --headful
@@ -99,20 +98,26 @@ geoleads "gym in [city]" --params=cities.txt --limit=50 --output=indian_gyms.xls
 
 ---
 
-### ⚡ Turbo: Fast Parallel Processing
+### 🚀 Bulk: Multi-Keyword × Multi-City Mode
 
-Need data immediately at the risk of higher detection? Combine Batch Mode with `--concurrency`, `--fast`, and `--skip-emails`.
+The most powerful mode for generating massive lead lists. Requires a `keywords.txt` and a `cities.txt` file.
 
-```bash
-geoleads "cafes in [city]" -p cities.txt -l 20 -c 3 --fast --skip-emails -o cafes.xlsx
+**`keywords.txt`**
+```text
+Nail Studio
+Hair Salon
+Spa
 ```
 
-- `-c 3` runs 3 headless browsers simultaneously.
-- `--fast` cuts the human-like delay times by 75%.
-- `--skip-emails` stops the scraper from visiting individual business websites, saving massive amounts of time.
+**Command:**
+```bash
+geoleads "[keyword] in [city]" -k keywords.txt -p cities.txt -l 20 -c 5 --fast --skip-emails -o bulk_leads.xlsx
+```
 
-> [!CAUTION]
-> Utilizing high concurrency combined with `--fast` drastically increases the likelihood of triggering Google's CAPTCHAs or temporary IP bans. Use responsibly and preferably behind a rotating proxy.
+- `-k` Path to keywords file.
+- `-p` Path to cities file.
+- `-c 5` Runs 5 parallel browsers for maximum throughput.
+- `-o bulk_leads.xlsx` Generates one Excel file per keyword, organized by city tabs.
 
 ---
 
@@ -120,11 +125,12 @@ geoleads "cafes in [city]" -p cities.txt -l 20 -c 3 --fast --skip-emails -o cafe
 
 | Flag | Alias | Default | Description |
 | :--- | :---: | :---: | :--- |
-| `query` | | (Required) | The search query (e.g. `"plumbers in Chicago"` or `"IT companies in [city]"`) |
+| `query` | | (Required) | The search query (e.g. `"plumbers in Chicago"` or `"[keyword] in [city]"`) |
 | `--limit` | `-l` | `10` | Maximum number of business listings to retrieve per query. |
 | `--output`| `-o` | `results.xlsx`| The destination path and filename for the `.xlsx` export. |
 | `--headful`| | `false` | Disables headless mode, opening a visible Chrome window. |
 | `--params`| `-p` | `undefined` | Path to a `.txt` file containing cities (requires `[city]` in query). |
+| `--keywords`| `-k` | `undefined` | Path to a `.txt` file containing keywords (requires `[keyword]` in query). |
 | `--concurrency`| `-c`| `1` | Number of simultaneous browsers for batch mode (Max 10). |
 | `--fast` | | `false` | Reduces built-in delays by 75% for rapid execution. |
 | `--skip-emails`| | `false` | Bypasses navigating to individual websites to locate emails. |
@@ -139,50 +145,28 @@ Each scraped business includes the following fields in the exported Excel file:
 | Column | Description |
 | :--- | :--- |
 | **Business Name** | Name of the business listing |
-| **Website** | Business website URL (social media URLs are filtered out) |
-| **Phone** | Phone number extracted via `data-phone-number` attribute |
-| **Email** | Email discovered from business website (if `--skip-emails` is not used) |
-| **Address** | Full street address from Google Places detail panel |
+| **Website** | Business website URL |
+| **Phone** | Phone number extracted via `data-item-id` attribute |
+| **Email** | Email discovered from business website (if found) |
+| **Address** | Full street address from Google Maps |
 | **Facebook** | Facebook page URL (if found on business website) |
 | **Instagram** | Instagram profile URL (if found) |
 | **Twitter** | Twitter/X profile URL (if found) |
 | **LinkedIn** | LinkedIn profile URL (if found) |
+| **Remarks** | **NEW**: Empty styled column for sales notes and call status |
 
 ---
 
-## 🏗️ Architecture
-
-For contributors and developers, GeoLeads is organized into highly modularized, single-responsibility layers:
-
-```text
-GeoLeads/
-├── cli/                 # Argument parsing and validation (yargs)
-├── scraper/             # Core Puppeteer stealth maps navigation logic
-├── parser/              # HTML DOM parsing, heuristic regex matchers, deduplication
-├── exporter/            # ExcelJS generation, stylings, and multi-sheet routing
-├── utils/               # Timing, standardized colored logging (Chalk/Ora), validators
-└── index.ts             # CLI Command Orchestrator / Entry point
-```
-
-> [!IMPORTANT]
-> **Extensibility**: The extraction logic in `parser/` is completely decoupled from the rendering in `scraper/`. If you wish to adapt GeoLeads to support an external API (like SerpApi or Apify), you only need to swap the `mapsScraper.ts` module.
-
----
-
-## ⚖️ Disclaimer & Terms of Setup
+## ⚖️ Disclaimer
 
 > [!WARNING]
-> While GeoLeads utilizes stealth plugins, scraping Google Services violates their Terms of Service. This tool is provided for **educational and academic research purposes only**. 
-> 
-> The authors and contributors assume no liability for misuse, IP bans, or resulting damage. Users must respect website `robots.txt` policies and adhere to local privacy regulations (e.g., GDPR, CCPA) when processing collected PII (Personally Identifiable Information) such as emails and phone numbers.
+> This tool is provided for **educational and academic research purposes only**. Scraping Google Services violates their Terms of Service. The authors assume no liability for misuse, IP bans, or resulting damage. Users must respect website `robots.txt` policies and adhere to local privacy regulations (e.g., GDPR).
 
 ---
 
 ## 🤝 Contributing
 
 We welcome contributions from the open-source community! 
-If you have ideas for new features, bug fixes, or enhancements:
-
 1. Fork the project.
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
 3. Commit your changes (`git commit -m 'feat: add some AmazingFeature'`).
