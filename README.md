@@ -1,6 +1,9 @@
 <div align="center">
   <h1>🗺️ GeoLeads</h1>
   <p><strong>Enterprise-grade CLI tool for extracting business leads from Google Maps</strong></p>
+  <br />
+  <img src="public/thumbnail.png" alt="GeoLeads Thumbnail" width="100%">
+
 
   [![npm version](https://img.shields.io/npm/v/geoleads.svg?style=flat-square)](https://www.npmjs.com/package/geoleads)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)

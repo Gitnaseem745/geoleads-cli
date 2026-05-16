@@ -28,3 +28,6 @@ yarn-error.log*
 
 # Ignore all examples
 examples/
+
+# Test scripts
+test_*.js
