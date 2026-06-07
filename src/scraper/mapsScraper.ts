@@ -31,6 +31,7 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
     dim: (msg: string) => logger.dim(`${logPrefix}${msg}`),
     warn: (msg: string) => logger.warn(`${logPrefix}${msg}`),
     error: (msg: string) => logger.error(`${logPrefix}${msg}`),
+    progress: (current: number, total: number, label: string) => logger.progress(current, total, `${logPrefix}${label}`),
   };
 
   try {
@@ -141,15 +142,14 @@ export async function scrapeGoogleMaps(query: string, limit: number, opts: Scrap
           continue;
         }
 
-        log.dim(`${businesses.length + 1}/${limit}: ${info.name}`);
-        if (info.phone) log.dim(`  📞 ${info.phone}`);
-        if (info.address) log.dim(`  📍 ${info.address}`);
+        // Progress bar (only business name as requested)
+        log.progress(totalProcessed, urlsToScrape.length, info.name);
 
         let website = info.website || '';
         let extractedSocials: Partial<Business> = {};
 
         if (website && isSocialMediaUrl(website)) {
-          log.dim(`  ↳ Found social media URL instead of website: ${website}`);
+          log.warn(`Found social media URL instead of website: ${website}`);
           const lowerUrl = website.toLowerCase();
           if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.com')) extractedSocials.facebook = website;
           else if (lowerUrl.includes('instagram.com')) extractedSocials.instagram = website;

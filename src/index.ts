@@ -31,7 +31,6 @@ import { deduplicateBusinesses } from './parser/extractData';
 import { exportToExcel, exportBatchToExcel, exportMultiKeywordBatchToExcel } from './exporter/excelExport';
 import logger from './utils/logger';
 import { setSpeed } from './utils/delay';
-import ora from 'ora';
 import type { Business } from './types';
 
 async function main(): Promise<void> {
@@ -67,25 +66,30 @@ async function main(): Promise<void> {
  * Single query mode (original behavior).
  */
 async function runSingleMode(query: string, limit: number, output: string, headful: boolean, skipEmails: boolean): Promise<void> {
-  logger.info(`Query:   "${query}"`);
-  logger.info(`Limit:   ${limit}`);
-  logger.info(`Output:  ${output}`);
-  logger.info(`Mode:    ${headful ? 'Headful' : 'Headless'}`);
-  if (skipEmails) logger.info('Emails:  Skipped (--skip-emails)');
-  console.log('');
+  // Display session config
+  const configMap: Record<string, string> = {
+    'Query':   `"${query}"`,
+    'Limit':   String(limit),
+    'Output':  output,
+    'Mode':    headful ? 'Headful (visible browser)' : 'Headless',
+  };
+  if (skipEmails) configMap['Emails'] = 'Skipped (--skip-emails)';
+  logger.printConfig(configMap);
 
-  const spinner = ora({ text: 'Starting scraper...', color: 'cyan' }).start();
   const startTime = Date.now();
+
+  logger.status('Starting scraper...');
 
   const rawResults = await scrapeGoogleMaps(query, limit, {
     headful,
     skipEmails,
     onProgress: (current: number, total: number) => {
-      spinner.text = `Processing listing ${current}/${total}...`;
+      logger.status(`Processing listing ${current}/${total}...`);
     },
   });
 
-  spinner.stop();
+  // Clear any lingering status line
+  process.stdout.write('\r\x1b[K');
 
   if (rawResults.length === 0) {
     logger.warn('No results were scraped. Possible reasons:');
@@ -103,39 +107,45 @@ async function runSingleMode(query: string, limit: number, output: string, headf
 
   logger.table(results);
 
-  const exportSpinner = ora({ text: 'Exporting to Excel...', color: 'green' }).start();
+  // Export
+  logger.status('Exporting to Excel...');
   try {
     await exportToExcel(results, output);
-    exportSpinner.succeed('Excel export complete!');
+    logger.statusDone('Excel export complete!');
   } catch (err) {
-    exportSpinner.fail('Excel export failed.');
+    logger.statusFail('Excel export failed.');
     logger.error((err as Error).message);
     process.exit(1);
   }
 
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log('');
-  logger.success(`Done! Scraped ${results.length} businesses in ${elapsed}s`);
-  logger.dim(`Output: ${output}`);
-  console.log('');
+  const elapsed = Date.now() - startTime;
+
+  logger.printSummary({
+    total: results.length,
+    succeeded: results.length,
+    duplicatesRemoved: dupeCount,
+    elapsedMs: elapsed,
+    outputPath: output,
+  });
 }
 
 /**
  * Batch mode — scrape multiple cities with optional parallel processing.
  */
 async function runBatchMode(queryTemplate: string, limit: number, output: string, headful: boolean, cities: string[], concurrency: number, skipEmails: boolean): Promise<void> {
-  logger.info(`Template:    "${queryTemplate}"`);
-  logger.info(`Cities:      ${cities.length} (${cities.slice(0, 5).join(', ')}${cities.length > 5 ? '...' : ''})`);
-  logger.info(`Limit:       ${limit} per city`);
-  logger.info(`Concurrency: ${concurrency} browser${concurrency > 1 ? 's' : ''} in parallel`);
-  logger.info(`Output:      ${output}`);
-  logger.info(`Mode:        ${headful ? 'Headful' : 'Headless'}`);
-  if (skipEmails) logger.info('Emails:      Skipped (--skip-emails)');
-  console.log('');
+  const configMap: Record<string, string> = {
+    'Template':    `"${queryTemplate}"`,
+    'Cities':      `${cities.length} (${cities.slice(0, 5).join(', ')}${cities.length > 5 ? '...' : ''})`,
+    'Limit':       `${limit} per city`,
+    'Concurrency': `${concurrency} browser${concurrency > 1 ? 's' : ''} in parallel`,
+    'Output':      output,
+    'Mode':        headful ? 'Headful' : 'Headless',
+  };
+  if (skipEmails) configMap['Emails'] = 'Skipped (--skip-emails)';
+  logger.printConfig(configMap);
 
   if (concurrency > 1) {
     logger.warn(`Running ${concurrency} browsers in parallel. RAM usage will be higher.`);
-    console.log('');
   }
 
   const startTime = Date.now();
@@ -157,23 +167,26 @@ async function runBatchMode(queryTemplate: string, limit: number, output: string
   }
 
   // Export
-  console.log('');
-  const exportSpinner = ora({ text: 'Exporting all cities to Excel...', color: 'green' }).start();
+  logger.status('Exporting all cities to Excel...');
 
   try {
     await exportBatchToExcel(cityDataMap, output);
-    exportSpinner.succeed('Batch Excel export complete!');
+    logger.statusDone('Batch Excel export complete!');
   } catch (err) {
-    exportSpinner.fail('Batch Excel export failed.');
+    logger.statusFail('Batch Excel export failed.');
     logger.error((err as Error).message);
     process.exit(1);
   }
 
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log('');
-  logger.success(`Batch complete! ${totalScraped} businesses across ${cities.length} cities in ${elapsed}s`);
-  logger.dim(`Output: ${output} (${cityDataMap.size} sheets)`);
-  console.log('');
+  const elapsed = Date.now() - startTime;
+
+  logger.printSummary({
+    total: totalScraped,
+    succeeded: totalScraped,
+    elapsedMs: elapsed,
+    outputPath: output,
+    outputSheets: cityDataMap.size,
+  });
 }
 
 /**
@@ -210,23 +223,22 @@ async function runMultiKeywordMode(
 ): Promise<void> {
   const totalQueries = keywords.length * cities.length;
 
-  logger.info(`╔══════════════════════════════════════════════════════╗`);
-  logger.info(`║       MULTI-KEYWORD × MULTI-CITY BULK MODE         ║`);
-  logger.info(`╚══════════════════════════════════════════════════════╝`);
-  console.log('');
-  logger.info(`Template:    "${queryTemplate}"`);
-  logger.info(`Keywords:    ${keywords.length} (${keywords.slice(0, 3).join(', ')}${keywords.length > 3 ? '...' : ''})`);
-  logger.info(`Cities:      ${cities.length} (${cities.slice(0, 5).join(', ')}${cities.length > 5 ? '...' : ''})`);
-  logger.info(`Total Runs:  ${totalQueries} queries (${keywords.length} keywords × ${cities.length} cities)`);
-  logger.info(`Limit:       ${limit} per query`);
-  logger.info(`Concurrency: ${concurrency} parallel browser${concurrency > 1 ? 's' : ''}`);
-  logger.info(`Output:      ${output} (one file per keyword)`);
-  if (skipEmails) logger.info('Emails:      Skipped (--skip-emails)');
-  console.log('');
+  logger.bulkModeHeader();
+
+  const configMap: Record<string, string> = {
+    'Template':    `"${queryTemplate}"`,
+    'Keywords':    `${keywords.length} (${keywords.slice(0, 3).join(', ')}${keywords.length > 3 ? '...' : ''})`,
+    'Cities':      `${cities.length} (${cities.slice(0, 5).join(', ')}${cities.length > 5 ? '...' : ''})`,
+    'Total Runs':  `${totalQueries} queries (${keywords.length} keywords × ${cities.length} cities)`,
+    'Limit':       `${limit} per query`,
+    'Concurrency': `${concurrency} parallel browser${concurrency > 1 ? 's' : ''}`,
+    'Output':      `${output} (one file per keyword)`,
+  };
+  if (skipEmails) configMap['Emails'] = 'Skipped (--skip-emails)';
+  logger.printConfig(configMap);
 
   if (concurrency > 1) {
     logger.warn(`Running ${concurrency} browsers in parallel. RAM usage will be higher.`);
-    console.log('');
   }
 
   const startTime = Date.now();
@@ -238,10 +250,7 @@ async function runMultiKeywordMode(
     const keyword = keywords[ki];
     const keywordStartTime = Date.now();
 
-    console.log('');
-    logger.info(`${'━'.repeat(60)}`);
-    logger.info(`KEYWORD ${ki + 1}/${keywords.length}: "${keyword}"`);
-    logger.info(`${'━'.repeat(60)}`);
+    logger.keywordHeader(ki + 1, keywords.length, keyword);
 
     // Build the query template for this keyword
     const keywordQuery = queryTemplate.replace(/\[keyword\]/gi, keyword);
@@ -272,26 +281,23 @@ async function runMultiKeywordMode(
       logger.error(`Export failed for keyword "${keyword}": ${(err as Error).message}`);
     }
 
-    const keywordElapsed = ((Date.now() - keywordStartTime) / 1000).toFixed(1);
-    logger.success(`Keyword "${keyword}": ${keywordTotal} leads across ${cities.length} cities in ${keywordElapsed}s`);
+    const keywordElapsed = Date.now() - keywordStartTime;
+    logger.success(`Keyword "${keyword}": ${keywordTotal} leads across ${cities.length} cities in ${logger.formatMs(keywordElapsed)}`);
 
     // Clear reference to allow GC
     cityDataMap.clear();
   }
 
-  const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log('');
-  logger.info(`${'═'.repeat(60)}`);
-  logger.success(`BULK SCRAPE COMPLETE!`);
-  logger.info(`${'═'.repeat(60)}`);
-  logger.info(`Total Leads:    ${grandTotal}`);
-  logger.info(`Keywords:       ${keywords.length}`);
-  logger.info(`Cities:         ${cities.length}`);
-  logger.info(`Total Queries:  ${totalQueries}`);
-  logger.info(`Time Elapsed:   ${totalElapsed}s`);
-  logger.info(`Files Created:  ${allFiles.length}`);
-  allFiles.forEach((f) => logger.dim(`  → ${f}`));
-  console.log('');
+  const totalElapsed = Date.now() - startTime;
+
+  logger.bulkSummary({
+    grandTotal,
+    keywords: keywords.length,
+    cities: cities.length,
+    totalQueries,
+    elapsedMs: totalElapsed,
+    files: allFiles,
+  });
 }
 
 /**
@@ -304,21 +310,21 @@ async function runSequentialBatch(queryTemplate: string, limit: number, headful:
     const city = cities[c];
     const actualQuery = queryTemplate.replace(/\[city\]/gi, city);
 
-    console.log('');
-    logger.info(`━━━ City ${c + 1}/${cities.length}: ${city.toUpperCase()} ━━━`);
+    logger.cityHeader(c + 1, cities.length, city);
     logger.info(`Query: "${actualQuery}"`);
 
-    const spinner = ora({ text: `Scraping ${city}...`, color: 'cyan' }).start();
+    logger.status(`Scraping ${city}...`);
 
     const rawResults = await scrapeGoogleMaps(actualQuery, limit, {
       headful,
       skipEmails,
       onProgress: (current: number, total: number) => {
-        spinner.text = `[${city}] Processing listing ${current}/${total}...`;
+        logger.status(`[${city}] Processing listing ${current}/${total}...`);
       },
     });
 
-    spinner.stop();
+    // Clear status line
+    process.stdout.write('\r\x1b[K');
 
     if (rawResults.length === 0) {
       logger.warn(`No results for "${city}". Skipping.`);
@@ -353,7 +359,6 @@ async function runParallelBatch(queryTemplate: string, limit: number, headful: b
 
   // Track progress
   let completed = 0;
-  const activeWorkers = new Set<string>();
 
   // Create a queue of cities to process
   const queue = [...cities];
@@ -393,7 +398,7 @@ async function runParallelBatch(queryTemplate: string, limit: number, headful: b
     }
 
     completed++;
-    logger.info(`Progress: ${completed}/${totalCities} cities done`);
+    logger.progress(completed, totalCities, `${completed}/${totalCities} cities done`);
   }
 
   // Worker pool: process cities with limited concurrency
@@ -403,16 +408,13 @@ async function runParallelBatch(queryTemplate: string, limit: number, headful: b
     while (queue.length > 0) {
       const city = queue.shift();
       if (!city) break;
-      activeWorkers.add(city);
       await processCity(city);
-      activeWorkers.delete(city);
     }
   }
 
   // Launch N workers
   const workerCount = Math.min(concurrency, cities.length);
   logger.info(`Launching ${workerCount} parallel workers...`);
-  console.log('');
 
   for (let i = 0; i < workerCount; i++) {
     workers.push(runWorker());
